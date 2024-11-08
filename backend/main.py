@@ -180,20 +180,50 @@ def is_similar_box(box1, box2, threshold=0.7) -> bool:
     return iou > threshold
 
 @app.get("/video/{video_id}")
-async def get_video_info(video_id: str):
+async def get_video_info(
+    video_id: str,
+    page: int = 1,
+    page_size: int = 10
+):
     try:
         # Find the video document by video_id in MongoDB
         video_doc = videos_collection.find_one({"_id": ObjectId(video_id)})
         if not video_doc:
             raise HTTPException(status_code=404, detail="Video not found")
 
+        # Get the total number of car images
+        total_images = len(video_doc["car_images"])
+        
+        # Calculate pagination parameters
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        
+        # Get the paginated subset of car images
+        paginated_images = video_doc["car_images"][start_idx:end_idx]
+        
+        # Calculate total pages
+        total_pages = (total_images + page_size - 1) // page_size
+        
         return {
             "video_id": str(video_id),
-            "car_images": video_doc["car_images"]
+            "car_images": paginated_images,
+            "pagination": {
+                "current_page": page,
+                "page_size": page_size,
+                "total_images": total_images,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_previous": page > 1
+            }
         }
+    except IndexError:
+        # Handle the case where page number is out of range
+        raise HTTPException(
+            status_code=400,
+            detail="Page number out of range"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 # New endpoint to list all video IDs
 @app.get("/video")
 async def list_all_videos():
