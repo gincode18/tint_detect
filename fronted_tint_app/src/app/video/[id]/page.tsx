@@ -1,5 +1,5 @@
-import Home from "@/components/home_page";
+import VideoPage from "@/components/video_page";
 
 export default function Page() {
-  return <Home></Home>;
+  return <VideoPage></VideoPage>;
 }

@@ -26,7 +26,9 @@ export default function Home() {
 
   const fetchVideos = async () => {
     try {
-      const response = await fetch(`${process.env.BACKEND_URL}/videos`);
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/video`
+      );
       const data: Videos = await response.json();
       setVideos(data.video_ids.map((id) => ({ video_id: id })));
     } catch (error) {
@@ -43,10 +45,13 @@ export default function Home() {
     formData.append("file", file);
 
     try {
-      const response = await fetch(`${process.env.BACKEND_URL}/upload_video/`, {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/upload_video/`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
       const data = await response.json();
       console.log("Upload successful:", data);
       fetchVideos();
@@ -107,11 +112,18 @@ export default function Home() {
               className="cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105 bg-white"
               onClick={() => handleVideoClick(video.video_id)}
             >
-              <CardContent className="flex items-center justify-center p-6">
-                <VideoIcon className="h-12 w-12 text-blue-500" />
-                <span className="ml-2 font-medium text-gray-700">
-                  Video {video.video_id.slice(-6)}
-                </span>
+              <CardContent className="p-6">
+                <img
+                  src={`${process.env.NEXT_PUBLIC_BACKEND_URL}/videos/${video.video_id}/thumbnail.png`}
+                  alt={`Car ${video.video_id}`}
+                  className="w-full h-48 object-cover mb-2 rounded-lg"
+                />
+                <div className="flex items-center justify-center p-6">
+                  <VideoIcon className="h-12 w-12 text-blue-500" />
+                  <span className="ml-2 font-medium text-gray-700">
+                    Video {video.video_id.slice(-6)}
+                  </span>
+                </div>
               </CardContent>
             </Card>
           ))}

@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import os
 import logging
 import time
+from fastapi.middleware.cors import CORSMiddleware
 
 # Load environment variables from .env
 load_dotenv()
@@ -30,6 +31,14 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Add your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load YOLOv5 model
 model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
