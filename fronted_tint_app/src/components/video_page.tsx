@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,20 +31,27 @@ export default function VideoPage({
   const [tintLevel, setTintLevel] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const fetchImages = async (page: string, pageSize: string) => {
+  const fetchImages = async (page: number) => {
+    setIsLoading(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/video/${id}?page=${page}&page_size=${pageSize}`
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/video/${id}?page=${page}&page_size=${videoDetails.pagination.page_size}`
       );
       if (!response.ok) {
         throw new Error("Failed to fetch images");
       }
       const data: VideoDetails = await response.json();
       setVideoDetails(data);
+      setCurrentPage(page);
+      updateUrlWithoutReload(page);
     } catch (error) {
       console.error("Error fetching images:", error);
       setError("Failed to fetch images. Please try again later.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -69,9 +76,9 @@ export default function VideoPage({
   };
 
   const changePage = (newPage: number) => {
-    router.push(
-      `/video/${id}?page=${newPage}&page_size=${videoDetails?.pagination.page_size}`
-    );
+    if (newPage !== currentPage) {
+      fetchImages(newPage);
+    }
   };
 
   const openModal = (image: CarImage) => {
@@ -86,18 +93,43 @@ export default function VideoPage({
     setError(null);
   };
 
+  const updateUrlWithoutReload = (page: number) => {
+    const newUrl = `${window.location.pathname}?page=${page}&page_size=${videoDetails.pagination.page_size}`;
+    window.history.pushState({ page }, "", newUrl);
+  };
+
+  useEffect(() => {
+    const page = Number(searchParams.get("page")) || 1;
+    setCurrentPage(page);
+    fetchImages(page);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.page) {
+        fetchImages(event.state.page);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   if (!videoDetails) {
     return <div>Loading...</div>;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200">
+    <div
+      className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200"
+      ref={containerRef}
+    >
       <div className="container mx-auto p-4">
         <div className="flex justify-between items-center mb-6">
           <Link href="/">
             <Button
               variant="outline"
-              className="flex items-center space-x-2 bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200 "
+              className="flex items-center space-x-2 bg-white hover:bg-gray-100 transition-colors duration-200"
             >
               <Home className="h-4 w-4" />
               <span>Home</span>
@@ -108,13 +140,15 @@ export default function VideoPage({
           </h1>
           <div className="w-[100px]"></div> {/* Spacer for alignment */}
         </div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"
-        >
-          <AnimatePresence>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentPage}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5 }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"
+          >
             {videoDetails.car_images.map((image: CarImage, index) => (
               <motion.div
                 key={image.image_id}
@@ -140,8 +174,8 @@ export default function VideoPage({
                 </Card>
               </motion.div>
             ))}
-          </AnimatePresence>
-        </motion.div>
+          </motion.div>
+        </AnimatePresence>
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -150,24 +184,19 @@ export default function VideoPage({
         >
           <div className="flex justify-center items-center space-x-2">
             <Button
-              onClick={() =>
-                changePage(videoDetails.pagination.current_page - 1)
-              }
-              disabled={!videoDetails.pagination.has_previous}
+              onClick={() => changePage(currentPage - 1)}
+              disabled={!videoDetails.pagination.has_previous || isLoading}
               className="bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
             >
               <ChevronLeft className="h-4 w-4 mr-2" />
               Previous
             </Button>
             <span className="text-lg font-medium text-gray-700">
-              Page {videoDetails.pagination.current_page} of{" "}
-              {videoDetails.pagination.total_pages}
+              Page {currentPage} of {videoDetails.pagination.total_pages}
             </span>
             <Button
-              onClick={() =>
-                changePage(videoDetails.pagination.current_page + 1)
-              }
-              disabled={!videoDetails.pagination.has_next}
+              onClick={() => changePage(currentPage + 1)}
+              disabled={!videoDetails.pagination.has_next || isLoading}
               className="bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
             >
               Next
@@ -175,14 +204,10 @@ export default function VideoPage({
             </Button>
           </div>
           <div className="text-sm text-gray-600">
-            Showing{" "}
-            {(videoDetails.pagination.current_page - 1) *
-              videoDetails.pagination.page_size +
-              1}{" "}
+            Showing {(currentPage - 1) * videoDetails.pagination.page_size + 1}{" "}
             -{" "}
             {Math.min(
-              videoDetails.pagination.current_page *
-                videoDetails.pagination.page_size,
+              currentPage * videoDetails.pagination.page_size,
               videoDetails.pagination.total_images
             )}{" "}
             of {videoDetails.pagination.total_images} images
