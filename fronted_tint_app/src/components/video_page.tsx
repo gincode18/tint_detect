@@ -4,7 +4,15 @@ import { useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { VideoDetails, CarImage } from "@/types";
 
 export default function VideoPage({ initialVideoDetails }: { initialVideoDetails: VideoDetails }) {
@@ -12,7 +20,10 @@ export default function VideoPage({ initialVideoDetails }: { initialVideoDetails
   const searchParams = useSearchParams();
   const router = useRouter();
   const [videoDetails, setVideoDetails] = useState<VideoDetails>(initialVideoDetails);
-  const [tintLevels, setTintLevels] = useState<Record<string, string>>({});
+  const [selectedImage, setSelectedImage] = useState<CarImage | null>(null);
+  const [tintLevel, setTintLevel] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchImages = async (page: string, pageSize: string) => {
     try {
@@ -26,16 +37,25 @@ export default function VideoPage({ initialVideoDetails }: { initialVideoDetails
       setVideoDetails(data);
     } catch (error) {
       console.error("Error fetching images:", error);
+      setError("Failed to fetch images. Please try again later.");
     }
   };
 
   const fetchTintLevel = async (imageId: string) => {
+    setIsLoading(true);
+    setError(null);
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/tint/${imageId}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch tint level");
+      }
       const data = await response.json();
-      setTintLevels((prev) => ({ ...prev, [imageId]: data.tint_level }));
+      setTintLevel(data.tint_level);
     } catch (error) {
       console.error("Error fetching tint level:", error);
+      setError("Failed to fetch tint level. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -43,6 +63,18 @@ export default function VideoPage({ initialVideoDetails }: { initialVideoDetails
     router.push(
       `/video/${id}?page=${newPage}&page_size=${videoDetails?.pagination.page_size}`
     );
+  };
+
+  const openModal = (image: CarImage) => {
+    setSelectedImage(image);
+    setTintLevel(null);
+    setError(null);
+  };
+
+  const closeModal = () => {
+    setSelectedImage(null);
+    setTintLevel(null);
+    setError(null);
   };
 
   if (!videoDetails) {
@@ -68,12 +100,10 @@ export default function VideoPage({ initialVideoDetails }: { initialVideoDetails
                   className="w-full h-48 object-cover mb-2 rounded-lg"
                 />
                 <Button
-                  onClick={() => fetchTintLevel(image.image_id)}
+                  onClick={() => openModal(image)}
                   className="w-full bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
                 >
-                  {tintLevels[image.image_id]
-                    ? `Tint Level: ${tintLevels[image.image_id]}`
-                    : "Check Tint Level"}
+                  Check Tint Level
                 </Button>
               </CardContent>
             </Card>
@@ -121,6 +151,45 @@ export default function VideoPage({ initialVideoDetails }: { initialVideoDetails
           </div>
         </div>
       </div>
+
+      <Dialog open={!!selectedImage} onOpenChange={closeModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Tint Level Check</DialogTitle>
+            <DialogDescription>
+              Checking tint level for image {selectedImage?.image_id}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            {selectedImage && (
+              <img
+                src={selectedImage.url}
+                alt={`Car ${selectedImage.image_id}`}
+                className="w-full h-48 object-cover mb-4 rounded-lg"
+              />
+            )}
+            {isLoading ? (
+              <div className="text-center">Loading tint level...</div>
+            ) : error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : tintLevel ? (
+              <div className="text-center text-xl font-bold">
+                Tint Level: {tintLevel}
+              </div>
+            ) : (
+              <Button
+                onClick={() => selectedImage && fetchTintLevel(selectedImage.image_id)}
+                className="w-full bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
+              >
+                Check Tint Level
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,7 @@ export default function HomeClient({ initialVideos }: { initialVideos: Video[] }
   const [isUploading, setIsUploading] = useState(false);
   const [pageSize, setPageSize] = useState("10");
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchVideos = async () => {
     try {
@@ -69,6 +70,10 @@ export default function HomeClient({ initialVideos }: { initialVideos: Video[] }
     router.push(`/video/${videoId}?page=1&page_size=${pageSize}`);
   };
 
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200">
       <div className="container mx-auto p-4">
@@ -83,16 +88,16 @@ export default function HomeClient({ initialVideos }: { initialVideos: Video[] }
             className="hidden"
             id="video-upload"
             disabled={isUploading}
+            ref={fileInputRef}
           />
-          <label htmlFor="video-upload">
-            <Button
-              disabled={isUploading}
-              className="bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {isUploading ? "Uploading..." : "Upload Video"}
-            </Button>
-          </label>
+          <Button
+            onClick={handleUploadClick}
+            disabled={isUploading}
+            className="bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            {isUploading ? "Uploading..." : "Upload Video"}
+          </Button>
           <Select value={pageSize} onValueChange={setPageSize}>
             <SelectTrigger className="w-[180px] bg-white text-gray-800 border-gray-300">
               <SelectValue placeholder="Images per page" />
