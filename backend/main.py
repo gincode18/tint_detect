@@ -14,13 +14,15 @@ import os
 # Load environment variables from .env
 load_dotenv()
 
-# Initialize FastAPI
-app = FastAPI()
-
-dmongo_uri = os.getenv("MONGO_URI")
-b = client["traffic_db"]
+# Initialize MongoDB client using the environment variable
+mongo_uri = os.getenv("MONGO_URI")
+client = MongoClient(mongo_uri)  # Ensure `client` is initialized here
+db = client["traffic_db"]
 videos_collection = db["videos"]
 images_collection = db["images"]
+
+# Initialize FastAPI
+app = FastAPI()
 
 # Load YOLOv5 model
 model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
@@ -92,7 +94,7 @@ def detect_cars_in_video(video_path: str, video_id) -> List[dict]:
     cap.release()
     return car_images_metadata
 
-@app.get("/videos/{video_id}")
+@app.get("/video/{video_id}")
 async def get_video_info(video_id: str):
     try:
         # Find the video document by video_id in MongoDB
@@ -107,6 +109,17 @@ async def get_video_info(video_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# New endpoint to list all video IDs
+@app.get("/video")
+async def list_all_videos():
+    try:
+        # Retrieve all video IDs from the database
+        video_ids = videos_collection.find({}, {"_id": 1})
+        # Convert ObjectIds to strings
+        video_id_list = [str(video["_id"]) for video in video_ids]
+        return {"video_ids": video_id_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 async def health():
