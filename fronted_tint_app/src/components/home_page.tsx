@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,28 +11,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Upload, Video as VideoIcon } from "lucide-react";
-import type { Videos, Video } from "@/types";
+import { Upload, Video as VideoIcon, AlertCircle } from "lucide-react";
+import type { Video } from "@/types";
 
-export default function Home() {
-  const [videos, setVideos] = useState<Video[]>([]);
+export default function HomeClient({ initialVideos }: { initialVideos: Video[] }) {
+  const [videos, setVideos] = useState<Video[]>(initialVideos);
   const [isUploading, setIsUploading] = useState(false);
   const [pageSize, setPageSize] = useState("10");
   const router = useRouter();
-
-  useEffect(() => {
-    fetchVideos();
-  }, []);
 
   const fetchVideos = async () => {
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/video`
       );
-      const data: Videos = await response.json();
-      setVideos(data.video_ids.map((id) => ({ video_id: id })));
+      if (!response.ok) {
+        throw new Error('Failed to fetch videos');
+      }
+      const data = await response.json();
+      setVideos(data.video_ids.map((id: string) => ({ video_id: id })));
     } catch (error) {
       console.error("Error fetching videos:", error);
+      setVideos([]); // Set videos to empty array on error
     }
   };
 
@@ -52,6 +52,9 @@ export default function Home() {
           body: formData,
         }
       );
+      if (!response.ok) {
+        throw new Error('Failed to upload video');
+      }
       const data = await response.json();
       console.log("Upload successful:", data);
       fetchVideos();
@@ -83,7 +86,6 @@ export default function Home() {
           />
           <label htmlFor="video-upload">
             <Button
-              // as="span"
               disabled={isUploading}
               className="bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
             >
@@ -105,29 +107,45 @@ export default function Home() {
         <h2 className="text-2xl font-semibold mb-4 text-gray-700 text-center">
           Recently Uploaded Videos
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {videos.map((video) => (
-            <Card
-              key={video.video_id}
-              className="cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105 bg-white"
-              onClick={() => handleVideoClick(video.video_id)}
+        {videos.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {videos.map((video) => (
+              <Card
+                key={video.video_id}
+                className="cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105 bg-white"
+                onClick={() => handleVideoClick(video.video_id)}
+              >
+                <CardContent className="p-6">
+                  <img
+                    src={`${process.env.NEXT_PUBLIC_BACKEND_URL}/videos/${video.video_id}/thumbnail.png`}
+                    alt={`Car ${video.video_id}`}
+                    className="w-full h-48 object-cover mb-2 rounded-lg"
+                  />
+                  <div className="flex items-center justify-center p-6">
+                    <VideoIcon className="h-12 w-12 text-blue-500" />
+                    <span className="ml-2 font-medium text-gray-700">
+                      Video {video.video_id.slice(-6)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center p-8 bg-white rounded-lg shadow">
+            <AlertCircle className="mx-auto h-12 w-12 text-yellow-500 mb-4" />
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">No Videos Available</h3>
+            <p className="text-gray-600">
+              There are currently no videos to display. This could be due to a connection issue with the backend server or because no videos have been uploaded yet.
+            </p>
+            <Button
+              onClick={fetchVideos}
+              className="mt-4 bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
             >
-              <CardContent className="p-6">
-                <img
-                  src={`${process.env.NEXT_PUBLIC_BACKEND_URL}/videos/${video.video_id}/thumbnail.png`}
-                  alt={`Car ${video.video_id}`}
-                  className="w-full h-48 object-cover mb-2 rounded-lg"
-                />
-                <div className="flex items-center justify-center p-6">
-                  <VideoIcon className="h-12 w-12 text-blue-500" />
-                  <span className="ml-2 font-medium text-gray-700">
-                    Video {video.video_id.slice(-6)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              Retry Loading Videos
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

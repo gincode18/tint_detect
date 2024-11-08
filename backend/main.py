@@ -32,12 +32,13 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI
 app = FastAPI()
 
+# Allow all origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Add your frontend URL
+    allow_origins=["*"],  # Allows all origins
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all HTTP methods
+    allow_headers=["*"],  # Allows all headers
 )
 
 # Load YOLOv5 model

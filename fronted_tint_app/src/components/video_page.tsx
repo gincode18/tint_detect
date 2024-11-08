@@ -1,25 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Image from "next/image";
+import { useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { VideoDetails, CarImage } from "@/types";
 
-export default function VideoPage() {
+export default function VideoPage({ initialVideoDetails }: { initialVideoDetails: VideoDetails }) {
   const { id } = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
+  const [videoDetails, setVideoDetails] = useState<VideoDetails>(initialVideoDetails);
   const [tintLevels, setTintLevels] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const page = searchParams.get("page") || "1";
-    const pageSize = searchParams.get("page_size") || "10";
-    fetchImages(page, pageSize);
-  }, [id, searchParams]);
 
   const fetchImages = async (page: string, pageSize: string) => {
     try {
