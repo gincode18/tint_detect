@@ -125,6 +125,28 @@ Returns a list of video IDs.
 ]
 ```
 
+### 3. **GET /tint/{image_id}**
+This endpoint allows you to retrieve the tint level of the car in a particular image identified by the `image_id`. The tint level is determined based on the color of the window (using image processing techniques) and could return a value such as "Low", "Medium", or "High".
+
+#### Request:
+- **Method**: GET
+- **Parameters**: `image_id` (required) — The MongoDB image ID that identifies the car image.
+  
+#### Example:
+```bash
+curl -X 'GET' \
+  'http://127.0.0.1:8000/tint/60b8d6d72ef5c742b54c2cbe1'
+```
+
+#### Response:
+The response returns the tint level of the car's windows in the image, which can be categorized as `"Low"`, `"Medium"`, or `"High"` based on the analysis of the window color.
+
+```json
+{
+  "image_id": "60b8d6d72ef5c742b54c2cbe1",
+  "tint_level": "Medium"
+}
+```
 ---
 
 ## File Structure
