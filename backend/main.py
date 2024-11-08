@@ -33,6 +33,10 @@ app.mount("/videos", StaticFiles(directory="videos"), name="videos")
 
 @app.post("/upload_video/")
 async def upload_video(file: UploadFile = File(...)):
+    # Check if the file was successfully received
+    if file.content_type != "video/mp4":
+        return JSONResponse({"error": "Invalid file type, only mp4 videos allowed."}, status_code=400)
+
     # Insert a new video document to get the MongoDB _id
     video_doc = {"car_images": []}
     video_id = videos_collection.insert_one(video_doc).inserted_id
@@ -43,8 +47,12 @@ async def upload_video(file: UploadFile = File(...)):
 
     # Save uploaded video temporarily
     video_path = video_folder / f"{video_id}.mp4"
-    with video_path.open("wb") as f:
-        f.write(await file.read())
+    try:
+        with video_path.open("wb") as f:
+            # This line reads and saves the uploaded file content
+            f.write(await file.read())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     # Process video and save car images
     car_images = detect_cars_in_video(str(video_path), video_id)
