@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  # FastAPI backend
+  fastapi:
+    build:
+      context: ./  # Point to the backend directory where the FastAPI code exists
+      dockerfile: Dockerfile  # Dockerfile located in the backend folder
+    container_name: fastapi_backend
+    ports:
+      - "8000:8000"
+    networks:
+      - backend_network
+    depends_on:
+      - mongo
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/
+    volumes:
+      - ./videos:/app/videos  # Mount the videos folder from your local machine to the container
+      - ./:/app  # Mount the entire backend folder to /app inside the container
+
+  # MongoDB service
+  mongo:
+    image: mongo:latest
+    container_name: mongo_db
+    ports:
+      - "27017:27017"
+    networks:
+      - backend_network
+    volumes:
+      - mongo_data:/data/db
+
+# Define a network to allow communication between the services
+networks:
+  backend_network:
+    driver: bridge
+
+# Volumes for MongoDB data persistence
+volumes:
+  mongo_data:

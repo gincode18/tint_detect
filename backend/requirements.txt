@@ -6,3 +6,6 @@ torch
 torchvision
 pymongo
 python-dotenv
+pandas
+requests
+python-multipart
