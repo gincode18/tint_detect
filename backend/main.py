@@ -33,13 +33,15 @@ app.mount("/videos", StaticFiles(directory="videos"), name="videos")
 
 @app.post("/upload_video/")
 async def upload_video(file: UploadFile = File(...)):
-    # Check if the file was successfully received
-    if file.content_type != "video/mp4":
-        return JSONResponse({"error": "Invalid file type, only mp4 videos allowed."}, status_code=400)
+    logger.info("Starting video upload")
+
+    # Log the start time
+    start_time = time.time()
 
     # Insert a new video document to get the MongoDB _id
     video_doc = {"car_images": []}
     video_id = videos_collection.insert_one(video_doc).inserted_id
+    logger.info(f"Created MongoDB entry for video with ID: {video_id}")
 
     # Create directory for storing images of this video
     video_folder = Path(f"videos/{video_id}")
@@ -49,10 +51,12 @@ async def upload_video(file: UploadFile = File(...)):
     video_path = video_folder / f"{video_id}.mp4"
     try:
         with video_path.open("wb") as f:
-            # This line reads and saves the uploaded file content
-            f.write(await file.read())
+            content = await file.read()
+            f.write(content)
+        logger.info(f"Uploaded video saved at {video_path}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error saving uploaded video: {e}")
+        raise HTTPException(status_code=500, detail="Error saving video")
 
     # Process video and save car images
     car_images = detect_cars_in_video(str(video_path), video_id)
@@ -62,13 +66,21 @@ async def upload_video(file: UploadFile = File(...)):
         {"_id": video_id},
         {"$set": {"car_images": car_images}}
     )
+    logger.info(f"Updated MongoDB entry for video {video_id} with car images metadata")
 
     # Clean up temporary video file if desired
     video_path.unlink()
 
+    # Log the total time taken
+    total_time = time.time() - start_time
+    logger.info(f"Video processing completed in {total_time:.2f} seconds")
+
     return JSONResponse({"video_id": str(video_id), "car_images": car_images})
 
+
 def detect_cars_in_video(video_path: str, video_id) -> List[dict]:
+    logger.info("Starting car detection in video")
+
     cap = cv2.VideoCapture(video_path)
     car_images_metadata = []
 
@@ -84,22 +96,23 @@ def detect_cars_in_video(video_path: str, video_id) -> List[dict]:
                 car_image = frame[y1:y2, x1:x2]
 
                 # Insert image metadata in MongoDB to get _id
-                image_id = images_collection.insert_one({
-                    "video_id": video_id,
-                    "bounding_box": [x1, y1, x2, y2]
-                }).inserted_id
+                image_doc = {"video_id": video_id, "bounding_box": [x1, y1, x2, y2]}
+                image_id = images_collection.insert_one(image_doc).inserted_id
+                logger.info(f"Inserted car image with ID: {image_id} for video {video_id}")
 
                 # Save car image with image_id as the filename
                 image_path = Path(f"videos/{video_id}/{image_id}.png")
                 cv2.imwrite(str(image_path), car_image)
+                logger.info(f"Saved car image at {image_path}")
 
                 # Store image URL for frontend access
                 car_images_metadata.append({
                     "image_id": str(image_id),
-                    "url": f"http://localhost:8000/videos/{video_id}/{image_id}.png"
+                    "url": f"http://localhost:3000/videos/{video_id}/{image_id}.png"
                 })
 
     cap.release()
+    logger.info("Car detection completed")
     return car_images_metadata
 
 @app.get("/video/{video_id}")
