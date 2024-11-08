@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+opencv-python-headless
+pydantic
+torch
+torchvision
+pymongo
+python-dotenv
