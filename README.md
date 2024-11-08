@@ -5,7 +5,16 @@ This project allows users to upload videos, detect cars windows tint level in th
 ## Requirements
 
 - Python 3.7+
-- MongoDB (Cloud or Local instance)
+- MongoDB (Cloud or Local instance) or docker
+```bash
+docker run -d \
+  --name mongodb \
+  -p 27017:27017 \
+  -e MONGO_INITDB_ROOT_USERNAME=mongoadmin \
+  -e MONGO_INITDB_ROOT_PASSWORD=secret \
+  -v mongodb_data:/data/db \
+  mongo:latest
+```
 - OpenCV (`cv2`)
 - `pydantic` and `fastapi`
 - `uvicorn` for running the FastAPI app

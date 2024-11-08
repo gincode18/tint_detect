@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -75,12 +76,27 @@ export default function HomeClient({ initialVideos }: { initialVideos: Video[] }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200"
+    >
       <div className="container mx-auto p-4">
-        <h1 className="text-4xl font-bold mb-6 text-gray-800 text-center py-8">
+        <motion.h1
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="text-4xl font-bold mb-6 text-gray-800 text-center py-8"
+        >
           Car Tint Analyzer
-        </h1>
-        <div className="mb-8 flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+        </motion.h1>
+        <motion.div
+          initial={{ y: 50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          className="mb-8 flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4"
+        >
           <input
             type="file"
             accept="video/*"
@@ -96,7 +112,17 @@ export default function HomeClient({ initialVideos }: { initialVideos: Video[] }
             className="bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
           >
             <Upload className="mr-2 h-4 w-4" />
-            {isUploading ? "Uploading..." : "Upload Video"}
+            {isUploading ? (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                Uploading...
+              </motion.span>
+            ) : (
+              "Upload Video"
+            )}
           </Button>
           <Select value={pageSize} onValueChange={setPageSize}>
             <SelectTrigger className="w-[180px] bg-white text-gray-800 border-gray-300">
@@ -108,50 +134,76 @@ export default function HomeClient({ initialVideos }: { initialVideos: Video[] }
               <SelectItem value="50">50 images per page</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-        <h2 className="text-2xl font-semibold mb-4 text-gray-700 text-center">
+        </motion.div>
+        <motion.h2
+          initial={{ y: 50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.6 }}
+          className="text-2xl font-semibold mb-4 text-gray-700 text-center"
+        >
           Recently Uploaded Videos
-        </h2>
-        {videos.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {videos.map((video) => (
-              <Card
-                key={video.video_id}
-                className="cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105 bg-white"
-                onClick={() => handleVideoClick(video.video_id)}
-              >
-                <CardContent className="p-6">
-                  <img
-                    src={`${process.env.NEXT_PUBLIC_BACKEND_URL}/videos/${video.video_id}/thumbnail.png`}
-                    alt={`Car ${video.video_id}`}
-                    className="w-full h-48 object-cover mb-2 rounded-lg"
-                  />
-                  <div className="flex items-center justify-center p-6">
-                    <VideoIcon className="h-12 w-12 text-blue-500" />
-                    <span className="ml-2 font-medium text-gray-700">
-                      Video {video.video_id.slice(-6)}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center p-8 bg-white rounded-lg shadow">
-            <AlertCircle className="mx-auto h-12 w-12 text-yellow-500 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">No Videos Available</h3>
-            <p className="text-gray-600">
-              There are currently no videos to display. This could be due to a connection issue with the backend server or because no videos have been uploaded yet.
-            </p>
-            <Button
-              onClick={fetchVideos}
-              className="mt-4 bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
+        </motion.h2>
+        <AnimatePresence>
+          {videos.length > 0 ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5 }}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
             >
-              Retry Loading Videos
-            </Button>
-          </div>
-        )}
+              {videos.map((video, index) => (
+                <motion.div
+                  key={video.video_id}
+                  initial={{ opacity: 0, y: 50 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -50 }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                >
+                  <Card
+                    className="cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105 bg-white"
+                    onClick={() => handleVideoClick(video.video_id)}
+                  >
+                    <CardContent className="p-6">
+                      <img
+                        src={`${process.env.NEXT_PUBLIC_BACKEND_URL}/videos/${video.video_id}/thumbnail.png`}
+                        alt={`Car ${video.video_id}`}
+                        className="w-full h-48 object-cover mb-2 rounded-lg"
+                      />
+                      <div className="flex items-center justify-center p-6">
+                        <VideoIcon className="h-12 w-12 text-blue-500" />
+                        <span className="ml-2 font-medium text-gray-700">
+                          Video {video.video_id.slice(-6)}
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -50 }}
+              transition={{ duration: 0.5 }}
+              className="text-center p-8 bg-white rounded-lg shadow"
+            >
+              <AlertCircle className="mx-auto h-12 w-12 text-yellow-500 mb-4" />
+              <h3 className="text-xl font-semibold text-gray-800 mb-2">No Videos Available</h3>
+              <p className="text-gray-600">
+                There are currently no videos to display. This could be due to a connection issue with the backend server or because no videos have been uploaded yet.
+              </p>
+              <Button
+                onClick={fetchVideos}
+                className="mt-4 bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
+              >
+                Retry Loading Videos
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 }
