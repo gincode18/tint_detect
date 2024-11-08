@@ -92,6 +92,15 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
     last_saved_box = None
     batched_updates = []
 
+    # Create thumbnail of the first frame
+    ret, frame = cap.read()
+    if ret:
+        thumbnail_path = Path(f"videos/{video_id}/thumbnail.png")
+        # Save the original frame as the thumbnail without resizing
+        cv2.imwrite(str(thumbnail_path), frame)
+        logger.info(f"Saved video thumbnail at {thumbnail_path}")
+
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
