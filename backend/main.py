@@ -10,6 +10,8 @@ from pymongo import MongoClient
 from bson import ObjectId
 from dotenv import load_dotenv
 import os
+import logging
+import time
 
 # Load environment variables from .env
 load_dotenv()
@@ -21,12 +23,17 @@ db = client["traffic_db"]
 videos_collection = db["videos"]
 images_collection = db["images"]
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Initialize FastAPI
 app = FastAPI()
 
 # Load YOLOv5 model
 model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
 model.classes = [2]  # Filter for 'car' class only
+model.conf = 0.6  # Set confidence threshold to filter weak detections
 
 # Mount the videos directory as static
 app.mount("/videos", StaticFiles(directory="videos"), name="videos")
@@ -35,7 +42,6 @@ app.mount("/videos", StaticFiles(directory="videos"), name="videos")
 async def upload_video(file: UploadFile = File(...)):
     logger.info("Starting video upload")
 
-    # Log the start time
     start_time = time.time()
 
     # Insert a new video document to get the MongoDB _id
@@ -58,8 +64,8 @@ async def upload_video(file: UploadFile = File(...)):
         logger.error(f"Error saving uploaded video: {e}")
         raise HTTPException(status_code=500, detail="Error saving video")
 
-    # Process video and save car images
-    car_images = detect_cars_in_video(str(video_path), video_id)
+    # Process video and save car images with optimizations
+    car_images = detect_cars_in_video(str(video_path), video_id, frame_skip=10)
 
     # Update video document with car images metadata
     videos_collection.update_one(
@@ -71,32 +77,45 @@ async def upload_video(file: UploadFile = File(...)):
     # Clean up temporary video file if desired
     video_path.unlink()
 
-    # Log the total time taken
     total_time = time.time() - start_time
     logger.info(f"Video processing completed in {total_time:.2f} seconds")
 
     return JSONResponse({"video_id": str(video_id), "car_images": car_images})
 
 
-def detect_cars_in_video(video_path: str, video_id) -> List[dict]:
+def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10) -> List[dict]:
     logger.info("Starting car detection in video")
 
     cap = cv2.VideoCapture(video_path)
     car_images_metadata = []
+    frame_count = 0
+
+    last_saved_box = None  # Track the last saved bounding box
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
+        # Process every nth frame
+        if frame_count % frame_skip != 0:
+            frame_count += 1
+            continue
+
         results = model(frame)
         for det in results.xyxy[0]:
             if det[5] == 2:  # Check for 'car' class
                 x1, y1, x2, y2 = map(int, det[:4])
+                confidence = det[4].item()  # Confidence score
+
+                # Avoid saving duplicate bounding boxes (check overlap with last saved box)
+                if last_saved_box and is_similar_box(last_saved_box, (x1, y1, x2, y2)):
+                    continue
+
                 car_image = frame[y1:y2, x1:x2]
 
                 # Insert image metadata in MongoDB to get _id
-                image_doc = {"video_id": video_id, "bounding_box": [x1, y1, x2, y2]}
+                image_doc = {"video_id": video_id, "bounding_box": [x1, y1, x2, y2], "confidence": confidence}
                 image_id = images_collection.insert_one(image_doc).inserted_id
                 logger.info(f"Inserted car image with ID: {image_id} for video {video_id}")
 
@@ -111,9 +130,34 @@ def detect_cars_in_video(video_path: str, video_id) -> List[dict]:
                     "url": f"http://localhost:3000/videos/{video_id}/{image_id}.png"
                 })
 
+                # Update last saved bounding box
+                last_saved_box = (x1, y1, x2, y2)
+
+        frame_count += 1
+
     cap.release()
     logger.info("Car detection completed")
     return car_images_metadata
+
+
+def is_similar_box(box1, box2, threshold=0.7) -> bool:
+    """Check if two bounding boxes are similar based on IOU (Intersection over Union)."""
+    x1, y1, x2, y2 = box1
+    x1_, y1_, x2_, y2_ = box2
+
+    # Calculate intersection
+    inter_x1, inter_y1 = max(x1, x1_), max(y1, y1_)
+    inter_x2, inter_y2 = min(x2, x2_), min(y2, y2_)
+    inter_area = max(0, inter_x2 - inter_x1 + 1) * max(0, inter_y2 - inter_y1 + 1)
+
+    # Calculate union
+    box1_area = (x2 - x1 + 1) * (y2 - y1 + 1)
+    box2_area = (x2_ - x1_ + 1) * (y2_ - y1_ + 1)
+    union_area = box1_area + box2_area - inter_area
+
+    # Calculate Intersection over Union (IoU)
+    iou = inter_area / union_area
+    return iou > threshold
 
 @app.get("/video/{video_id}")
 async def get_video_info(video_id: str):
