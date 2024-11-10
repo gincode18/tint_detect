@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -47,8 +48,10 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [windowImage, setWindowImage] = useState<string | null>(null);
   const [showWindowModal, setShowWindowModal] = useState(false);
+  const [showTintModal, setShowTintModal] = useState(false);
+  const [windowImageProcessed, setWindowImageProcessed] = useState(false);
+  const [windowImageKey, setWindowImageKey] = useState(0);
 
   const fetchImages = async (page: number) => {
     setIsLoading(true);
@@ -97,16 +100,18 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
     }
   };
 
-  const openModal = (image: CarImage) => {
+  const openTintModal = (image: CarImage) => {
     setSelectedImage(image);
     setTintLevel(null);
     setError(null);
+    setShowTintModal(true);
   };
 
-  const closeModal = () => {
+  const closeTintModal = () => {
     setSelectedImage(null);
     setTintLevel(null);
     setError(null);
+    setShowTintModal(false);
   };
 
   const updateUrlWithoutReload = (page: number) => {
@@ -114,7 +119,20 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
     window.history.pushState({ page }, "", newUrl);
   };
 
-  const cropWindow = async (image: CarImage) => {
+  const openWindowModal = (image: CarImage) => {
+    setSelectedImage(image);
+    setShowWindowModal(true);
+    setWindowImageProcessed(false);
+    setWindowImageKey(prevKey => prevKey + 1);
+  };
+
+  const closeWindowModal = () => {
+    setShowWindowModal(false);
+    setSelectedImage(null);
+  };
+
+  const cropWindow = async () => {
+    if (!selectedImage) return;
     setIsLoading(true);
     setError(null);
     try {
@@ -125,15 +143,14 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
         },
         body: JSON.stringify({
           video_id: id,
-          image_id: image.image_id,
+          image_id: selectedImage.image_id,
         }),
       });
       if (!response.ok) {
         throw new Error("Failed to crop window");
       }
-      const data = await response.json();
-      setWindowImage(data.output_path);
-      setShowWindowModal(true);
+      setWindowImageProcessed(true);
+      setWindowImageKey(prevKey => prevKey + 1);
     } catch (error) {
       console.error("Error cropping window:", error);
       setError("Failed to crop window. Please try again.");
@@ -207,17 +224,17 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
                     />
                     <div className="flex space-x-2">
                       <Button
-                        onClick={() => openModal(image)}
+                        onClick={() => openTintModal(image)}
                         className="flex-1 bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
                       >
                         Check Tint Level
                       </Button>
                       <Button
-                        onClick={() => cropWindow(image)}
+                        onClick={() => openWindowModal(image)}
                         className="flex-1 bg-green-500 text-white hover:bg-green-600 transition-colors duration-200"
                       >
                         <Crop className="h-4 w-4 mr-2" />
-                        Crop Window
+                        View Window
                       </Button>
                     </div>
                   </CardContent>
@@ -266,8 +283,8 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
       </div>
 
       <AnimatePresence>
-        {selectedImage && (
-          <Dialog open={!!selectedImage} onOpenChange={closeModal}>
+        {showTintModal && selectedImage && (
+          <Dialog open={showTintModal} onOpenChange={closeTintModal}>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle>Tint Level Check</DialogTitle>
@@ -331,13 +348,13 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
       </AnimatePresence>
 
       <AnimatePresence>
-        {showWindowModal && (
-          <Dialog open={showWindowModal} onOpenChange={() => setShowWindowModal(false)}>
+        {showWindowModal && selectedImage && (
+          <Dialog open={showWindowModal} onOpenChange={closeWindowModal}>
             <DialogContent className="sm:max-w-[600px]">
               <DialogHeader>
-                <DialogTitle>Cropped Window</DialogTitle>
+                <DialogTitle>Car Window</DialogTitle>
                 <DialogDescription>
-                  Cropped window image for car {selectedImage?.image_id}
+                  Window image for car {selectedImage.image_id}
                 </DialogDescription>
               </DialogHeader>
               <motion.div
@@ -347,16 +364,37 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
                 transition={{ duration: 0.3 }}
                 className="mt-4"
               >
-                {windowImage ? (
-                  <img
-                    src={windowImage}
-                    alt="Cropped Window"
-                    className="w-full object-contain rounded-lg"
-                  />
-                ) : (
-                  <div className="text-center text-gray-500">No window image available</div>
+                <img
+                  key={windowImageKey}
+                  src={`${process.env.NEXT_PUBLIC_BACKEND_URL}/videos/${id}/${selectedImage.image_id}_window.png`}
+                  alt="Car Window"
+                  className="w-full object-contain rounded-lg"
+                />
+                {isLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{
+                        duration: 1,
+                        repeat: Infinity,
+                        ease: "linear",
+                      }}
+                      className="w-12 h-12 border-4 border-white border-t-transparent rounded-full"
+                    ></motion.div>
+                  </div>
                 )}
               </motion.div>
+              <DialogFooter>
+                {!windowImageProcessed && (
+                  <Button
+                    onClick={cropWindow}
+                    disabled={isLoading}
+                    className="bg-green-500 text-white hover:bg-green-600 transition-colors duration-200"
+                  >
+                    Crop Window
+                  </Button>
+                )}
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
