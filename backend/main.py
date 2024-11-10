@@ -3,6 +3,7 @@ import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi import  Request
 from typing import List
 import torch
 from pathlib import Path
@@ -14,7 +15,9 @@ import os
 import logging
 import time
 from fastapi.middleware.cors import CORSMiddleware
-
+from PIL import Image
+from model import UNET, load_checkpoint
+import torchvision.transforms as transforms
 # Load environment variables from .env
 load_dotenv()
 
@@ -42,9 +45,24 @@ app.add_middleware(
 )
 
 # Load YOLOv5 model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
-model.classes = [2]  # Filter for 'car' class only
-model.conf = 0.6  # Set confidence threshold to filter weak detections
+model_car = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+model_car.classes = [2]  # Filter for 'car' class only
+model_car.conf = 0.6  # Set confidence threshold to filter weak detections
+
+# Set up model_windows
+checkpoint_path = "/Users/vishalkamboj/webdev/tint_detection/backend/models/my_checkpoint.pth.tar"
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+model_windows = UNET(in_channels=3, out_channels=1).to(device)
+load_checkpoint(checkpoint_path, model_windows)
+model_windows.eval()  # Set model to evaluation mode
+
+# Define the transform (match training config)
+transform = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.0, 0.0, 0.0], std=[1.0, 1.0, 1.0])
+])
 
 # Mount the videos directory as static
 app.mount("/videos", StaticFiles(directory="videos"), name="videos")
@@ -121,7 +139,7 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
             frame_count += 1
             continue
 
-        results = model(frame)
+        results = model_car(frame)
         for det in results.xyxy[0]:
             if det[5] == 2:  # Check for 'car' class
                 x1, y1, x2, y2 = map(int, det[:4])
@@ -245,6 +263,40 @@ async def list_all_videos():
         return {"video_ids": video_id_list}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.route('/windows', methods=['POST'])
+async def detect_windows(request: Request):
+    data = await request.json()
+    image_id = data['image_id']
+    video_id = data['video_id']
+    
+    # Load the image based on video_id and image_id
+    image_path = Path(f"videos/{video_id}/{image_id}.png")
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail=f"Image not found: {image_path}")
+
+    image = Image.open(image_path).convert("RGB")
+    
+    # Preprocess image
+    input_image = transform(image).unsqueeze(0).to(device)
+    
+    # Predict window area
+    with torch.no_grad():
+        prediction = torch.sigmoid(model_windows(input_image))
+        prediction = (prediction > 0.5).float().cpu()  # Threshold prediction to binary mask
+    
+    # Save output
+    output_path = Path(f"videos/{video_id}/{image_id}_window.png")
+    output_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
+    prediction_image = transforms.ToPILImage()(prediction.squeeze(0))
+    prediction_image.save(output_path)
+    
+    # Generate complete URL for the output path
+    full_output_url = f"http://localhost:8000/{output_path}"
+
+    return JSONResponse(content={"message": "Window detected and saved", "output_path": full_output_url})
+
 
 @app.get("/")
 async def health():
