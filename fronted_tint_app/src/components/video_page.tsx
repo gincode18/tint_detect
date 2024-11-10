@@ -6,7 +6,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Home, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, X, Crop } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,24 +15,40 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import type { VideoDetails, CarImage } from "@/types";
 
-export default function VideoPage({
-  initialVideoDetails,
-}: {
-  initialVideoDetails: VideoDetails;
-}) {
+type CarImage = {
+  image_id: string;
+  url: string;
+};
+
+type Pagination = {
+  page: number;
+  page_size: number;
+  total_pages: number;
+  total_images: number;
+  has_previous: boolean;
+  has_next: boolean;
+};
+
+type VideoDetails = {
+  video_id: string;
+  car_images: CarImage[];
+  pagination: Pagination;
+};
+
+export default function Component({ initialVideoDetails }: { initialVideoDetails: VideoDetails }) {
   const { id } = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [videoDetails, setVideoDetails] =
-    useState<VideoDetails>(initialVideoDetails);
+  const [videoDetails, setVideoDetails] = useState<VideoDetails>(initialVideoDetails);
   const [selectedImage, setSelectedImage] = useState<CarImage | null>(null);
   const [tintLevel, setTintLevel] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [windowImage, setWindowImage] = useState<string | null>(null);
+  const [showWindowModal, setShowWindowModal] = useState(false);
 
   const fetchImages = async (page: number) => {
     setIsLoading(true);
@@ -98,6 +114,34 @@ export default function VideoPage({
     window.history.pushState({ page }, "", newUrl);
   };
 
+  const cropWindow = async (image: CarImage) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/windows`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          video_id: id,
+          image_id: image.image_id,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to crop window");
+      }
+      const data = await response.json();
+      setWindowImage(data.output_path);
+      setShowWindowModal(true);
+    } catch (error) {
+      console.error("Error cropping window:", error);
+      setError("Failed to crop window. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     const page = Number(searchParams.get("page")) || 1;
     setCurrentPage(page);
@@ -120,10 +164,7 @@ export default function VideoPage({
   }
 
   return (
-    <div
-      className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200"
-      ref={containerRef}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200" ref={containerRef}>
       <div className="container mx-auto p-4">
         <div className="flex justify-between items-center mb-6">
           <Link href="/">
@@ -138,7 +179,7 @@ export default function VideoPage({
           <h1 className="text-4xl font-bold text-gray-800 text-center">
             Images from Video {id}
           </h1>
-          <div className="w-[100px]"></div> {/* Spacer for alignment */}
+          <div className="w-[100px]"></div>
         </div>
         <AnimatePresence mode="wait">
           <motion.div
@@ -164,12 +205,21 @@ export default function VideoPage({
                       alt={`Car ${image.image_id}`}
                       className="w-full h-48 object-cover mb-2 rounded-lg"
                     />
-                    <Button
-                      onClick={() => openModal(image)}
-                      className="w-full bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
-                    >
-                      Check Tint Level
-                    </Button>
+                    <div className="flex space-x-2">
+                      <Button
+                        onClick={() => openModal(image)}
+                        className="flex-1 bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
+                      >
+                        Check Tint Level
+                      </Button>
+                      <Button
+                        onClick={() => cropWindow(image)}
+                        className="flex-1 bg-green-500 text-white hover:bg-green-600 transition-colors duration-200"
+                      >
+                        <Crop className="h-4 w-4 mr-2" />
+                        Crop Window
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -273,6 +323,38 @@ export default function VideoPage({
                   >
                     Check Tint Level
                   </Button>
+                )}
+              </motion.div>
+            </DialogContent>
+          </Dialog>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showWindowModal && (
+          <Dialog open={showWindowModal} onOpenChange={() => setShowWindowModal(false)}>
+            <DialogContent className="sm:max-w-[600px]">
+              <DialogHeader>
+                <DialogTitle>Cropped Window</DialogTitle>
+                <DialogDescription>
+                  Cropped window image for car {selectedImage?.image_id}
+                </DialogDescription>
+              </DialogHeader>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="mt-4"
+              >
+                {windowImage ? (
+                  <img
+                    src={windowImage}
+                    alt="Cropped Window"
+                    className="w-full object-contain rounded-lg"
+                  />
+                ) : (
+                  <div className="text-center text-gray-500">No window image available</div>
                 )}
               </motion.div>
             </DialogContent>
