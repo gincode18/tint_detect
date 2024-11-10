@@ -258,7 +258,7 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
     logger.info("Car detection completed")
     return car_images_metadata
 
-    
+
 def is_similar_box(box1, box2, threshold=0.7) -> bool:
     """Check if two bounding boxes are similar based on IOU (Intersection over Union)."""
     x1, y1, x2, y2 = box1
@@ -332,8 +332,121 @@ async def list_all_videos():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def crop_largest_rect_area(image_array, threshold=10):
+    """
+    Crops the largest rectangular area from an image array by removing black portions.
+    
+    Args:
+        image_array: numpy array of the image
+        threshold: intensity threshold to determine black regions
+    
+    Returns:
+        numpy array of the cropped image
+    """
+    # Convert the image to grayscale if it's not already
+    if len(image_array.shape) == 3:
+        gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = image_array
+
+    # Threshold the image to make black regions black and others white
+    _, thresh = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
+    
+    # Find contours in the thresholded image
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if not contours:  # If no contours found, return original image
+        return image_array
+        
+    # Find the largest contour (by area)
+    largest_contour = max(contours, key=cv2.contourArea)
+    
+    # Get the bounding box of the largest contour
+    x, y, w, h = cv2.boundingRect(largest_contour)
+    
+    # Crop the image using the bounding box
+    cropped_image = image_array[y:y+h, x:x+w]
+    
+    return cropped_image
+
 @app.post("/windows")
 async def detect_windows(request: Request):
+    data = await request.json()
+    image_id = data['image_id']
+    video_id = data['video_id']
+    
+    # Load the image based on video_id and image_id
+    image_path = Path(f"videos/{video_id}/{image_id}.png")
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail=f"Image not found: {image_path}")
+
+    image = Image.open(image_path).convert("RGB")
+    
+    input_image = transform(image).unsqueeze(0).to(device)  # Add batch dimension
+
+    # Perform inference
+    with torch.no_grad():
+        prediction = torch.sigmoid(model(input_image))
+        prediction = (prediction > 0.5).float().cpu()
+
+    # Convert prediction to a numpy array
+    prediction_array = prediction.squeeze(0).squeeze(0).numpy()
+
+    # Convert the original image to a numpy array
+    original_image_array = np.array(image)
+
+    # Resize the prediction array to match the original image dimensions
+    prediction_resized = np.array(Image.fromarray(prediction_array).resize(
+        original_image_array.shape[1::-1], 
+        Image.NEAREST
+    ))
+
+    # Use the resized mask to create a colorized output
+    color_mask = np.expand_dims(prediction_resized, axis=-1)
+    color_mask = np.repeat(color_mask, 3, axis=-1)
+
+    # Highlight the windshield area
+    highlighted_image = np.where(color_mask == 1, original_image_array, 0)
+
+    # Crop the largest rectangular area (removing black portions)
+    cropped_image = crop_largest_rect_area(highlighted_image)
+
+    # Calculate the new dimensions after cropping
+    new_height, new_width = cropped_image.shape[:2]
+    
+    # Only resize if the image is too small
+    min_size = 800
+    if new_width < min_size and new_height < min_size:
+        aspect_ratio = new_width / new_height
+        if new_width > new_height:
+            new_width = min_size
+            new_height = int(min_size / aspect_ratio)
+        else:
+            new_height = min_size
+            new_width = int(min_size * aspect_ratio)
+            
+        cropped_image = cv2.resize(
+            cropped_image, 
+            (new_width, new_height), 
+            interpolation=cv2.INTER_CUBIC
+        )
+
+    # Save the output image
+    output_path = Path(f"videos/{video_id}/{image_id}_window.png")
+    cv2.imwrite(str(output_path), cv2.cvtColor(cropped_image, cv2.COLOR_RGB2BGR))
+
+    # Generate the URL for the output
+    full_output_url = f"http://localhost:8000/{output_path}"
+
+    return JSONResponse(content={
+        "message": "Window detected and saved",
+        "output_path": full_output_url,
+        "dimensions": {
+            "width": new_width,
+            "height": new_height
+        }
+    })
     data = await request.json()
     image_id = data['image_id']
     video_id = data['video_id']

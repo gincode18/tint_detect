@@ -156,6 +156,100 @@ The response returns the tint level of the car's windows in the image, which can
   "tint_level": "Medium"
 }
 ```
+
+# Video Upload and Car Tint Detection API
+
+[Previous sections remain the same until the routes...]
+
+## Routes
+
+[Previous routes remain the same...]
+
+### 4. **POST /windows**
+This endpoint processes a detected car image to identify and extract the windshield/window area. It performs window detection using a trained UNET model, removes black portions around the detected window, and returns a processed image that highlights just the window area.
+
+#### Request:
+- **Method**: POST
+- **Content-Type**: application/json
+- **Body**:
+```json
+{
+  "video_id": "60b8d6d72ef5c742b54c2cb1",
+  "image_id": "60b8d6d72ef5c742b54c2cbe1"
+}
+```
+
+#### Processing Steps:
+1. Loads the specified car image
+2. Detects windows using the UNET model
+3. Creates a mask highlighting the window area
+4. Removes black portions around the detected window
+5. Resizes the image if necessary (minimum 800px dimension)
+6. Saves the processed image with maintained aspect ratio
+
+#### Example:
+```bash
+curl -X 'POST' \
+  'http://127.0.0.1:8000/windows' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "video_id": "60b8d6d72ef5c742b54c2cb1",
+    "image_id": "60b8d6d72ef5c742b54c2cbe1"
+  }'
+```
+
+#### Response:
+Returns a JSON response containing the path to the processed image and its dimensions:
+
+```json
+{
+  "message": "Window detected and saved",
+  "output_path": "http://localhost:8000/videos/60b8d6d72ef5c742b54c2cb1/60b8d6d72ef5c742b54c2cbe1_window.png",
+  "dimensions": {
+    "width": 800,
+    "height": 600
+  }
+}
+```
+
+#### Error Responses:
+- **404 Not Found**: If the specified image cannot be found
+- **500 Internal Server Error**: If there's an error processing the image
+
+
+## Additional Requirements
+
+The `/windows` route requires additional dependencies:
+```
+torch
+torchvision
+numpy
+Pillow
+opencv-python-headless
+```
+
+## Performance Considerations
+
+[Previous sections remain the same, add the following:]
+
+- **Window Detection Processing**: The window detection and image processing can be computationally intensive. Consider implementing caching mechanisms for frequently accessed images.
+- **Image Size Optimization**: While the route maintains a minimum size of 800px for quality, you may want to adjust this based on your specific needs and storage constraints.
+
+## Troubleshooting
+
+[Previous sections remain, add the following:]
+
+4. **"Window detection failed"**:
+   - Ensure the input image exists in the specified path
+   - Verify that the UNET model is properly loaded
+   - Check if the image format is supported (PNG/JPEG)
+
+5. **"Black image output"**:
+   - This might occur if no windows are detected in the image
+   - Verify that the car image is clear and windows are visible
+   - Adjust the threshold parameter in the cropping function if needed
+
 ---
 
 ## File Structure
