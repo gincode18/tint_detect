@@ -219,8 +219,14 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
 
                 car_image = frame[y1:y2, x1:x2]
 
-                # Prepare image metadata
-                image_doc = {"video_id": video_id, "bounding_box": [x1, y1, x2, y2], "confidence": confidence}
+                # Prepare image metadata with default tint values
+                image_doc = {
+                    "video_id": video_id,
+                    "bounding_box": [x1, y1, x2, y2],
+                    "confidence": confidence,
+                    "tint_level": None,  # Default tint level is None
+                    "light_quality": None  # Default light quality is None
+                }
                 image_id = images_collection.insert_one(image_doc).inserted_id
                 logger.info(f"Inserted car image with ID: {image_id} for video {video_id}")
 
@@ -232,7 +238,9 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
                 # Add image data for batched update
                 car_images_metadata.append({
                     "image_id": str(image_id),
-                    "url": f"http://localhost:8000/videos/{video_id}/{image_id}.png"
+                    "url": f"http://localhost:8000/videos/{video_id}/{image_id}.png",
+                    "tint_level": None,  # Include default tint level in metadata
+                    "light_quality": None  # Include default light quality in metadata
                 })
 
                 # Prepare batch for MongoDB update
@@ -282,6 +290,21 @@ async def get_video_info(
     page_size: int = 10
 ):
     try:
+        # Define the tint and light quality mappings
+        TINT_MAPPING = {
+            0: 'High',
+            1: 'Light',
+            2: 'Light-Medium',
+            3: 'Medium',
+            4: 'Medium-High'
+        }
+        
+        LIGHT_QUALITY_MAPPING = {
+            0: 'day',
+            1: 'evening',
+            2: 'morning'
+        }
+
         # Find the video document by video_id in MongoDB
         video_doc = videos_collection.find_one({"_id": ObjectId(video_id)})
         if not video_doc:
@@ -296,6 +319,26 @@ async def get_video_info(
         
         # Get the paginated subset of car images
         paginated_images = video_doc["car_images"][start_idx:end_idx]
+
+        # Calculate tint level statistics from all images
+        car_images = images_collection.find(
+            {"video_id": video_id},
+            {"_id": 1, "tint_level": 1, "light_quality": 1}
+        )
+
+        # Calculate the average tint level (excluding None values)
+        tint_levels = []
+        for image in car_images:
+            if "tint_level" in image and image["tint_level"] is not None:
+                tint_levels.append(image["tint_level"])
+
+        # Calculate average tint level if there are any valid measurements
+        if tint_levels:
+            avg_tint_level = sum(tint_levels) / len(tint_levels)
+            tint_category = TINT_MAPPING[min(TINT_MAPPING.keys(), key=lambda k: abs(k - avg_tint_level))]
+        else:
+            tint_category = None
+            avg_tint_level = None
         
         # Calculate total pages
         total_pages = (total_images + page_size - 1) // page_size
@@ -303,6 +346,10 @@ async def get_video_info(
         return {
             "video_id": str(video_id),
             "car_images": paginated_images,
+            "tint_analysis": {
+                "category": tint_category,
+                "numeric_average": float(avg_tint_level) if avg_tint_level is not None else None
+            },
             "pagination": {
                 "current_page": page,
                 "page_size": page_size,
@@ -312,6 +359,7 @@ async def get_video_info(
                 "has_previous": page > 1
             }
         }
+
     except IndexError:
         # Handle the case where page number is out of range
         raise HTTPException(
