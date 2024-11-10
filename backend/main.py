@@ -16,7 +16,7 @@ import logging
 import time
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageOps
-from model import UNET, load_checkpoint
+# from model import UNET, load_checkpoint
 import torchvision.transforms as transforms
 import io
 import base64
@@ -55,19 +55,82 @@ model_car.classes = [2]  # Filter for 'car' class only
 model_car.conf = 0.6  # Set confidence threshold to filter weak detections
 
 # Set up model_windows
+# Define the model (U-Net, as provided)
+class DoubleConv(torch.nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(DoubleConv, self).__init__()
+        self.conv = torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False),
+            torch.nn.BatchNorm2d(out_channels),
+            torch.nn.ReLU(inplace=True),
+            torch.nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False),
+            torch.nn.BatchNorm2d(out_channels),
+            torch.nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+class UNET(torch.nn.Module):
+    def __init__(self, in_channels=3, out_channels=1, features=[64, 128, 256, 512]):
+        super(UNET, self).__init__()
+        self.ups = torch.nn.ModuleList()
+        self.downs = torch.nn.ModuleList()
+        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # Down part of UNET
+        for feature in features:
+            self.downs.append(DoubleConv(in_channels, feature))
+            in_channels = feature
+
+        # Up part of UNET
+        for feature in reversed(features):
+            self.ups.append(
+                torch.nn.ConvTranspose2d(feature * 2, feature, kernel_size=2, stride=2)
+            )
+            self.ups.append(DoubleConv(feature * 2, feature))
+
+        self.bottleneck = DoubleConv(features[-1], features[-1] * 2)
+        self.final_conv = torch.nn.Conv2d(features[0], out_channels, kernel_size=1)
+
+    def forward(self, x):
+        skip_connections = []
+
+        for down in self.downs:
+            x = down(x)
+            skip_connections.append(x)
+            x = self.pool(x)
+
+        x = self.bottleneck(x)
+        skip_connections = skip_connections[::-1]
+
+        for idx in range(0, len(self.ups), 2):
+            x = self.ups[idx](x)
+            skip_connection = skip_connections[idx // 2]
+
+            if x.shape != skip_connection.shape:
+                x = torch.nn.functional.interpolate(x, size=skip_connection.shape[2:])
+
+            concat_skip = torch.cat((skip_connection, x), dim=1)
+            x = self.ups[idx + 1](concat_skip)
+
+        return self.final_conv(x)
+
+# Initialize the model
+model = UNET(in_channels=3, out_channels=1).to("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint_path = "/Users/vishalkamboj/webdev/tint_detection/backend/models/my_checkpoint.pth.tar"
-device = "cuda" if torch.cuda.is_available() else "cpu"
+checkpoint = torch.load(checkpoint_path)
+model.load_state_dict(checkpoint["state_dict"])
+model.eval()
 
-model_windows = UNET(in_channels=3, out_channels=1).to(device)
-load_checkpoint(checkpoint_path, model_windows)
-model_windows.eval()  # Set model to evaluation mode
-
-# Define the transform (match training config)
+# Define image transformation
 transform = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.0, 0.0, 0.0], std=[1.0, 1.0, 1.0])
 ])
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Mount the videos directory as static
 app.mount("/videos", StaticFiles(directory="videos"), name="videos")
@@ -195,7 +258,7 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
     logger.info("Car detection completed")
     return car_images_metadata
 
-
+    
 def is_similar_box(box1, box2, threshold=0.7) -> bool:
     """Check if two bounding boxes are similar based on IOU (Intersection over Union)."""
     x1, y1, x2, y2 = box1
@@ -269,7 +332,7 @@ async def list_all_videos():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/windows', methods=['POST'])
+@app.post("/windows")
 async def detect_windows(request: Request):
     data = await request.json()
     image_id = data['image_id']
@@ -283,35 +346,34 @@ async def detect_windows(request: Request):
 
     image = Image.open(image_path).convert("RGB")
     
-    # Preprocess image
-    input_image = transform(image).unsqueeze(0).to(device)
-    
-    # Predict window area
-    with torch.no_grad():
-        prediction = torch.sigmoid(model_windows(input_image))
-        prediction = (prediction > 0.5).float().cpu()  # Threshold prediction to binary mask
-    
-    # Convert the prediction tensor to an image
-    prediction_image = transforms.ToPILImage()(prediction.squeeze(0).squeeze(0))
-    
-    # Resize mask to match the original image size
-    prediction_image = prediction_image.resize(image.size, resample=Image.BILINEAR)
-    
-    # Convert the mask to a binary format (black and white)
-    mask = ImageOps.grayscale(prediction_image).point(lambda x: 255 if x > 128 else 0, '1')
-    
-    # Apply the mask as a white overlay on the original image
-    overlay_image = image.copy()
-    overlay_image.paste((255, 255, 255), (0, 0), mask)  # White color for the window mask
+    input_image = transform(image).unsqueeze(0).to(device)  # Add batch dimension
 
-    # Define the output path and ensure the directory exists
+    # Perform inference
+    with torch.no_grad():
+        prediction = torch.sigmoid(model(input_image))  # Using the correct model
+        prediction = (prediction > 0.5).float().cpu()  # Move to CPU for display
+
+    # Convert prediction to a numpy array
+    prediction_array = prediction.squeeze(0).squeeze(0).numpy()
+
+    # Convert the original image to a numpy array
+    original_image_array = np.array(image)
+
+    # Resize the prediction array to match the original image dimensions
+    prediction_resized = np.array(Image.fromarray(prediction_array).resize(original_image_array.shape[1::-1], Image.NEAREST))
+
+    # Use the resized mask to create a colorized output (apply the prediction mask to the original image)
+    color_mask = np.expand_dims(prediction_resized, axis=-1)  # Convert to (H, W, 1)
+    color_mask = np.repeat(color_mask, 3, axis=-1)  # Repeat along the color channels
+
+    # Highlight the windshield area by overlaying the mask on the original image
+    highlighted_image = np.where(color_mask == 1, original_image_array, 0)
+
+    # Save the output image
     output_path = Path(f"videos/{video_id}/{image_id}_window.png")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Save the overlay image
-    overlay_image.save(output_path)
-    
-    # Generate a URL for the saved prediction image
+    plt.imsave(output_path, highlighted_image)
+
+    # Generate the URL for the output
     full_output_url = f"http://localhost:8000/{output_path}"
 
     return JSONResponse(content={"message": "Window detected and saved", "output_path": full_output_url})
