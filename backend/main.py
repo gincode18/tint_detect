@@ -15,10 +15,15 @@ import os
 import logging
 import time
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
+from PIL import Image, ImageOps
 from model import UNET, load_checkpoint
 import torchvision.transforms as transforms
+import io
+import base64
+import matplotlib.pyplot as plt
+
 # Load environment variables from .env
+
 load_dotenv()
 
 # Initialize MongoDB client using the environment variable
@@ -286,13 +291,27 @@ async def detect_windows(request: Request):
         prediction = torch.sigmoid(model_windows(input_image))
         prediction = (prediction > 0.5).float().cpu()  # Threshold prediction to binary mask
     
-    # Save output
-    output_path = Path(f"videos/{video_id}/{image_id}_window.png")
-    output_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
-    prediction_image = transforms.ToPILImage()(prediction.squeeze(0))
-    prediction_image.save(output_path)
+    # Convert the prediction tensor to an image
+    prediction_image = transforms.ToPILImage()(prediction.squeeze(0).squeeze(0))
     
-    # Generate complete URL for the output path
+    # Resize mask to match the original image size
+    prediction_image = prediction_image.resize(image.size, resample=Image.BILINEAR)
+    
+    # Convert the mask to a binary format (black and white)
+    mask = ImageOps.grayscale(prediction_image).point(lambda x: 255 if x > 128 else 0, '1')
+    
+    # Apply the mask as a white overlay on the original image
+    overlay_image = image.copy()
+    overlay_image.paste((255, 255, 255), (0, 0), mask)  # White color for the window mask
+
+    # Define the output path and ensure the directory exists
+    output_path = Path(f"videos/{video_id}/{image_id}_window.png")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Save the overlay image
+    overlay_image.save(output_path)
+    
+    # Generate a URL for the saved prediction image
     full_output_url = f"http://localhost:8000/{output_path}"
 
     return JSONResponse(content={"message": "Window detected and saved", "output_path": full_output_url})
