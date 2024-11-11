@@ -16,11 +16,12 @@ import logging
 import time
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageOps
-# from model import UNET, load_checkpoint
 import torchvision.transforms as transforms
 import io
 import base64
 import matplotlib.pyplot as plt
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.image import img_to_array, load_img
 
 # Load environment variables from .env
 
@@ -131,6 +132,28 @@ transform = transforms.Compose([
 ])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Load the Tint Level Prediction Model
+model_path = '/Users/vishalkamboj/webdev/tint_detection/backend/models/tint.h5' 
+model = load_model(model_path)
+
+# Define label mapping
+label_mapping = {
+    0: {'tint': 'High', 'light_quality': 'day'},
+    1: {'tint': 'Light', 'light_quality': 'day'},
+    2: {'tint': 'Light-Medium', 'light_quality': 'day'},
+    3: {'tint': 'Medium', 'light_quality': 'day'},
+    4: {'tint': 'Medium-High', 'light_quality': 'day'}
+}
+
+# Function to preprocess the image
+def preprocess_image(image_path):
+    # Load the image, resize it to 224x224 pixels, and normalize pixel values
+    img = load_img(image_path, target_size=(224, 224))
+    img_array = img_to_array(img) / 255.0  # Normalize to [0, 1]
+    img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
+    return img_array
+
 
 # Mount the videos directory as static
 app.mount("/videos", StaticFiles(directory="videos"), name="videos")
@@ -539,6 +562,38 @@ async def detect_windows(request: Request):
 
     return JSONResponse(content={"message": "Window detected and saved", "output_path": full_output_url})
 
+# Endpoint to predict tint level of a car window image
+@app.post("/tint")
+async def predict_tint(request: Request):
+    try:
+        data = await request.json()
+        image_id = data['image_id']
+        video_id = data['video_id']
+        # Load the image based on video_id and image_id
+        image_path = os.path.join("videos", video_id, f"{image_id}_window.png")
+        
+        if not os.path.exists(image_path):
+            raise HTTPException(status_code=404, detail=f"Image not found: {image_path}")
+        
+        # Preprocess the image
+        X_image_test = preprocess_image(image_path)
+        
+        # Predict the tint level
+        prediction = model.predict([X_image_test, np.array([[0, 0]])])  # Assuming no additional attributes
+        predicted_class_index = np.argmax(prediction, axis=1)[0]
+        predicted_attributes = label_mapping.get(predicted_class_index, "Unknown Class")
+
+         # Update the tint level in MongoDB
+        result = images_collection.update_one(
+            {"_id": ObjectId(image_id)},
+            {"$set": {"tint_level": predicted_attributes["tint"]}}
+        )
+        
+        # Return the predicted tint level
+        return {"video_id": video_id, "image_id": image_id, "tint_level": predicted_attributes["tint"]}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 async def health():

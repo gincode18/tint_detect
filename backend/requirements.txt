@@ -9,3 +9,4 @@ python-dotenv
 pandas
 requests
 python-multipart
+tensorflow

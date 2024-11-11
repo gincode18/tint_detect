@@ -250,6 +250,75 @@ opencv-python-headless
    - Verify that the car image is clear and windows are visible
    - Adjust the threshold parameter in the cropping function if needed
 
+### 5. **GET /tint**
+This endpoint allows you to retrieve the tint level of the car's window in a particular image identified by the `video_id` and `image_id`.
+
+The tint level is determined based on the color of the window using image processing techniques and a machine learning model. The predicted tint level can be categorized as "Low", "Medium", or "High".
+
+#### Request:
+- **Method**: GET
+- **Parameters**:
+  - `video_id` (required): The MongoDB ID of the video that contains the car image.
+  - `image_id` (required): The MongoDB ID of the car image.
+
+#### Example:
+```bash
+  curl --location 'http://127.0.0.1:8000/tint' \
+--header 'Content-Type: application/json' \
+--data '{
+    "video_id": "6730bf2963ad51a0842d08e5",
+    "image_id": "6730bf2963ad51a0842d08e6"
+}'
+```
+
+#### Response:
+The response returns the tint level of the car's window in the image.
+
+```json
+{
+  "video_id": "60b8d6d72ef5c742b54c2cb1",
+  "image_id": "60b8d6d72ef5c742b54c2cbe1",
+  "tint_level": "Medium"
+}
+```
+
+#### Error Responses:
+- **404 Not Found**: If the specified `video_id` or `image_id` cannot be found.
+- **500 Internal Server Error**: If there's an error processing the image or predicting the tint level.
+
+## Implementation Details
+
+The `/tint` endpoint uses a pre-trained machine learning model to predict the tint level of the car's window in the specified image. The model was trained on a dataset of car window images labeled with their tint levels.
+
+The key steps involved in the `/tint` endpoint are:
+
+1. Load the car image based on the provided `video_id` and `image_id`.
+2. Preprocess the image by resizing it to the required input size of the machine learning model.
+3. Pass the preprocessed image through the trained model to obtain the predicted tint level.
+4. Map the predicted tint level to a human-readable category (e.g., "Low", "Medium", "High").
+5. Return the `video_id`, `image_id`, and the predicted `tint_level` in the response.
+
+## Performance Considerations
+
+- **Model Loading and Inference**: Loading the machine learning model and performing the tint level prediction can be computationally intensive, especially for larger images. Consider implementing caching mechanisms to avoid unnecessary model loading and inference for frequently accessed images.
+- **Image Storage and Retrieval**: Ensure that the storage and retrieval of car images are efficient, as the `/tint` endpoint will need to access the images for each request. Optimize the file storage and database operations accordingly.
+
+## Troubleshooting
+
+1. **"Image not found"**:
+   - Verify that the specified `video_id` and `image_id` are valid and correspond to an existing car image in the system.
+   - Check the file system and database to ensure the image is stored correctly.
+
+2. **"Error predicting tint level"**:
+   - Ensure that the machine learning model is properly loaded and configured.
+   - Check the model's input requirements (e.g., image size, normalization) and verify that the preprocessing is correct.
+   - Review the model's performance on a test dataset to identify any issues with the tint level prediction.
+
+3. **"Unexpected tint level"**:
+   - If the predicted tint level seems inaccurate, review the model's training data and hyperparameters.
+   - Consider fine-tuning or retraining the model if necessary to improve its performance on the specific car window images.
+
+Feel free to expand on these sections as needed to provide comprehensive documentation for the `/tint` API endpoint.
 ---
 
 ## File Structure
