@@ -118,11 +118,11 @@ class UNET(torch.nn.Module):
         return self.final_conv(x)
 
 # Initialize the model
-model = UNET(in_channels=3, out_channels=1).to("cuda" if torch.cuda.is_available() else "cpu")
+model_window = UNET(in_channels=3, out_channels=1).to("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint_path = "/Users/vishalkamboj/webdev/tint_detection/backend/models/my_checkpoint.pth.tar"
 checkpoint = torch.load(checkpoint_path)
-model.load_state_dict(checkpoint["state_dict"])
-model.eval()
+model_window.load_state_dict(checkpoint["state_dict"])
+model_window.eval()
 
 # Define image transformation
 transform = transforms.Compose([
@@ -135,7 +135,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Load the Tint Level Prediction Model
 model_path = '/Users/vishalkamboj/webdev/tint_detection/backend/models/tint.h5' 
-model = load_model(model_path)
+model_tint = load_model(model_path)
 
 # Define label mapping
 label_mapping = {
@@ -164,7 +164,7 @@ async def upload_video(file: UploadFile = File(...)):
     start_time = time.time()
 
     # Insert a new video document to get the MongoDB _id
-    video_doc = {"car_images": []}
+    video_doc = {}
     video_id = videos_collection.insert_one(video_doc).inserted_id
     logger.info(f"Created MongoDB entry for video with ID: {video_id}")
 
@@ -184,14 +184,7 @@ async def upload_video(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Error saving video")
 
     # Process video and save car images in batches of 100
-    car_images = detect_cars_in_video(str(video_path), video_id, frame_skip=10)
-
-    # Update video document with car images metadata in MongoDB
-    videos_collection.update_one(
-        {"_id": video_id},
-        {"$set": {"car_images": car_images}}
-    )
-    logger.info(f"Updated MongoDB entry for video {video_id} with car images metadata")
+    car_images_metadata = detect_cars_in_video(str(video_path), video_id, frame_skip=10)
 
     # Clean up temporary video file if desired
     video_path.unlink()
@@ -199,8 +192,7 @@ async def upload_video(file: UploadFile = File(...)):
     total_time = time.time() - start_time
     logger.info(f"Video processing completed in {total_time:.2f} seconds")
 
-    return JSONResponse({"video_id": str(video_id), "car_images": car_images})
-
+    return JSONResponse({"video_id": str(video_id), "car_images": car_images_metadata})
 
 def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_size: int = 100) -> List[dict]:
     logger.info("Starting car detection in video")
@@ -215,10 +207,8 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
     ret, frame = cap.read()
     if ret:
         thumbnail_path = Path(f"videos/{video_id}/thumbnail.png")
-        # Save the original frame as the thumbnail without resizing
         cv2.imwrite(str(thumbnail_path), frame)
         logger.info(f"Saved video thumbnail at {thumbnail_path}")
-
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -242,15 +232,25 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
 
                 car_image = frame[y1:y2, x1:x2]
 
-                # Prepare image metadata with default tint values
+                # Create ObjectId for the image in advance
+                image_id = ObjectId()
+                
+                # Set the URL with the pre-generated image_id
+                image_url = f"http://localhost:8000/videos/{video_id}/{image_id}.png"
+                
+                # Prepare image metadata
                 image_doc = {
+                    "_id": image_id,
                     "video_id": video_id,
                     "bounding_box": [x1, y1, x2, y2],
                     "confidence": confidence,
-                    "tint_level": None,  # Default tint level is None
-                    "light_quality": None  # Default light quality is None
+                    "tint_level": None,        # Default tint level
+                    "light_quality": None,     # Default light quality
+                    "url": image_url           # Correct URL set before insertion
                 }
-                image_id = images_collection.insert_one(image_doc).inserted_id
+
+                # Insert the document into MongoDB
+                images_collection.insert_one(image_doc)
                 logger.info(f"Inserted car image with ID: {image_id} for video {video_id}")
 
                 # Save car image to disk
@@ -258,19 +258,19 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
                 cv2.imwrite(str(image_path), car_image)
                 logger.info(f"Saved car image at {image_path}")
 
-                # Add image data for batched update
+                # Collect image metadata for response
                 car_images_metadata.append({
                     "image_id": str(image_id),
-                    "url": f"http://localhost:8000/videos/{video_id}/{image_id}.png",
-                    "tint_level": None,  # Include default tint level in metadata
-                    "light_quality": None  # Include default light quality in metadata
+                    "url": image_url,
+                    "tint_level": None,
+                    "light_quality": None
                 })
-
-                # Prepare batch for MongoDB update
-                batched_updates.append(UpdateOne({"_id": image_id}, {"$set": image_doc}))
 
                 # Update last saved bounding box
                 last_saved_box = (x1, y1, x2, y2)
+
+                # Add document to batch if necessary
+                batched_updates.append(UpdateOne({"_id": image_id}, {"$set": image_doc}))
 
                 # Push batch of updates if batch size is met
                 if len(batched_updates) >= batch_size:
@@ -288,7 +288,6 @@ def detect_cars_in_video(video_path: str, video_id, frame_skip: int = 10, batch_
     cap.release()
     logger.info("Car detection completed")
     return car_images_metadata
-
 
 def is_similar_box(box1, box2, threshold=0.7) -> bool:
     """Check if two bounding boxes are similar based on IOU (Intersection over Union)."""
@@ -313,6 +312,9 @@ async def get_video_info(
     page_size: int = 10
 ):
     try:
+        # Convert video_id to ObjectId
+        video_object_id = ObjectId(video_id)
+
         # Define the tint and light quality mappings
         TINT_MAPPING = {
             0: 'High',
@@ -328,47 +330,39 @@ async def get_video_info(
             2: 'morning'
         }
 
-        # Find the video document by video_id in MongoDB
-        video_doc = videos_collection.find_one({"_id": ObjectId(video_id)})
-        if not video_doc:
-            raise HTTPException(status_code=404, detail="Video not found")
-
-        # Get the total number of car images
-        total_images = len(video_doc["car_images"])
+        # Query `images_collection` for documents with matching video_id
+        total_images = images_collection.count_documents({"video_id": video_object_id})
         
         # Calculate pagination parameters
         start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        
-        # Get the paginated subset of car images
-        paginated_images = video_doc["car_images"][start_idx:end_idx]
+        car_images_cursor = images_collection.find(
+            {"video_id": video_object_id},
+            {"_id": 1, "bounding_box": 1, "confidence": 1, "tint_level": 1, "light_quality": 1, "url": 1}
+        ).skip(start_idx).limit(page_size)
 
-        # Calculate tint level statistics from all images
-        car_images = images_collection.find(
-            {"video_id": video_id},
-            {"_id": 1, "tint_level": 1, "light_quality": 1}
-        )
+        # Convert cursor to list and handle ObjectId serialization
+        car_images = []
+        for image in car_images_cursor:
+            image["image_id"] = str(image["_id"])  # Convert `_id` to string and save it as `image_id`
+            del image["_id"]  # Optionally, delete the original `_id` field
+            car_images.append(image)
 
-        # Calculate the average tint level (excluding None values)
-        tint_levels = []
-        for image in car_images:
-            if "tint_level" in image and image["tint_level"] is not None:
-                tint_levels.append(image["tint_level"])
 
-        # Calculate average tint level if there are any valid measurements
+        # Calculate tint level statistics
+        tint_levels = [img["tint_level"] for img in car_images if img.get("tint_level") is not None]
         if tint_levels:
             avg_tint_level = sum(tint_levels) / len(tint_levels)
             tint_category = TINT_MAPPING[min(TINT_MAPPING.keys(), key=lambda k: abs(k - avg_tint_level))]
         else:
-            tint_category = None
             avg_tint_level = None
-        
+            tint_category = None
+
         # Calculate total pages
         total_pages = (total_images + page_size - 1) // page_size
         
         return {
-            "video_id": str(video_id),
-            "car_images": paginated_images,
+            "video_id": video_id,
+            "car_images": car_images,
             "tint_analysis": {
                 "category": tint_category,
                 "numeric_average": float(avg_tint_level) if avg_tint_level is not None else None
@@ -384,13 +378,14 @@ async def get_video_info(
         }
 
     except IndexError:
-        # Handle the case where page number is out of range
         raise HTTPException(
             status_code=400,
             detail="Page number out of range"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
 # New endpoint to list all video IDs
 @app.get("/video")
 async def list_all_videos():
@@ -458,7 +453,7 @@ async def detect_windows(request: Request):
 
     # Perform inference
     with torch.no_grad():
-        prediction = torch.sigmoid(model(input_image))
+        prediction = torch.sigmoid(model_window(input_image))
         prediction = (prediction > 0.5).float().cpu()
 
     # Convert prediction to a numpy array
@@ -534,7 +529,7 @@ async def detect_windows(request: Request):
 
     # Perform inference
     with torch.no_grad():
-        prediction = torch.sigmoid(model(input_image))  # Using the correct model
+        prediction = torch.sigmoid(model_window(input_image))  # Using the correct model
         prediction = (prediction > 0.5).float().cpu()  # Move to CPU for display
 
     # Convert prediction to a numpy array
@@ -579,7 +574,7 @@ async def predict_tint(request: Request):
         X_image_test = preprocess_image(image_path)
         
         # Predict the tint level
-        prediction = model.predict([X_image_test, np.array([[0, 0]])])  # Assuming no additional attributes
+        prediction = model_tint.predict([X_image_test, np.array([[0, 0]])])  # Assuming no additional attributes
         predicted_class_index = np.argmax(prediction, axis=1)[0]
         predicted_attributes = label_mapping.get(predicted_class_index, "Unknown Class")
 
