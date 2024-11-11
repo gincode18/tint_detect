@@ -250,13 +250,13 @@ opencv-python-headless
    - Verify that the car image is clear and windows are visible
    - Adjust the threshold parameter in the cropping function if needed
 
-### 5. **GET /tint**
+### 5. **POST /tint**
 This endpoint allows you to retrieve the tint level of the car's window in a particular image identified by the `video_id` and `image_id`.
 
 The tint level is determined based on the color of the window using image processing techniques and a machine learning model. The predicted tint level can be categorized as "Low", "Medium", or "High".
 
 #### Request:
-- **Method**: GET
+- **Method**: POST
 - **Parameters**:
   - `video_id` (required): The MongoDB ID of the video that contains the car image.
   - `image_id` (required): The MongoDB ID of the car image.

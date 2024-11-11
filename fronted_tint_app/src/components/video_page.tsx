@@ -20,6 +20,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 type CarImage = {
   image_id: string;
   url: string;
+  bounding_box: number[];
+  confidence: number;
+  tint_level: number | null;
+  light_quality: string | null;
 };
 
 type Pagination = {
@@ -43,7 +47,8 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
   const router = useRouter();
   const [videoDetails, setVideoDetails] = useState<VideoDetails>(initialVideoDetails);
   const [selectedImage, setSelectedImage] = useState<CarImage | null>(null);
-  const [tintLevel, setTintLevel] = useState<string | null>(null);
+  const [tintLevel, setTintLevel] = useState<number | null>(null);
+  const [lightQuality, setLightQuality] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -92,7 +97,8 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
         throw new Error("Failed to fetch tint level");
       }
       const data = await response.json();
-      setTintLevel(`${data.tint_category} (${data.tint_level})`);
+      setTintLevel(data.tint_level);
+      setLightQuality(data.light_quality);
     } catch (error) {
       console.error("Error fetching tint level:", error);
       setError("Failed to fetch tint level. Please try again.");
@@ -100,6 +106,26 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
       setIsLoading(false);
     }
   };
+
+  const TINT_MAPPING: { [key: number]: string } = {
+    0: 'High',
+    1: 'Light',
+    2: 'Light-Medium',
+    3: 'Medium',
+    4: 'Medium-High'
+  };
+  
+   function getTintCategory(tintLevel: number | null): string {
+    if (tintLevel === null) {
+      return 'Unknown';
+    }
+  
+    if (tintLevel in TINT_MAPPING) {
+      return TINT_MAPPING[tintLevel];
+    }
+  
+    return 'Invalid';
+  }
 
   const changePage = (newPage: number) => {
     if (newPage !== currentPage) {
@@ -109,7 +135,8 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
 
   const openTintModal = (image: CarImage) => {
     setSelectedImage(image);
-    setTintLevel(null);
+    setTintLevel(image.tint_level);
+    setLightQuality(image.light_quality);
     setError(null);
     setShowTintModal(true);
   };
@@ -117,6 +144,7 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
   const closeTintModal = () => {
     setSelectedImage(null);
     setTintLevel(null);
+    setLightQuality(null);
     setError(null);
     setShowTintModal(false);
   };
@@ -329,24 +357,23 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
                     <AlertTitle>Error</AlertTitle>
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
-                ) : tintLevel ? (
-                  <motion.div
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ duration: 0.3 }}
-                    className="text-center text-xl font-bold"
-                  >
-                    Tint Level: {tintLevel}
-                  </motion.div>
                 ) : (
-                  <Button
-                    onClick={() =>
-                      selectedImage && fetchTintLevel(id as string, selectedImage.image_id)
-                    }
-                    className="w-full bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
-                  >
-                    Get Tint Level
-                  </Button>
+                  <div className="space-y-4">
+                    <div className="text-center text-xl font-bold">
+                      Tint Level: {tintLevel !== null ? getTintCategory(tintLevel) : 'Not available'}
+                    </div>
+                    <div className="text-center text-lg">
+                      Light Quality: {lightQuality || 'Not available'}
+                    </div>
+                    <Button
+                      onClick={() =>
+                        selectedImage && fetchTintLevel(id as string, selectedImage.image_id)
+                      }
+                      className="w-full bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
+                    >
+                      Get Updated Tint Level
+                    </Button>
+                  </div>
                 )}
               </motion.div>
             </DialogContent>
@@ -383,7 +410,7 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
                       animate={{ rotate: 360 }}
                       transition={{
                         duration: 1,
-                        repeat: Infinity,
+                repeat: Infinity,
                         ease: "linear",
                       }}
                       className="w-12 h-12 border-4 border-white border-t-transparent rounded-full"
@@ -398,7 +425,7 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
                     disabled={isLoading}
                     className="bg-green-500 text-white hover:bg-green-600 transition-colors duration-200"
                   >
-                Crop Window
+                    Crop Window
                   </Button>
                 )}
               </DialogFooter>
