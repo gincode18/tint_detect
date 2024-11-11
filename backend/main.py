@@ -564,6 +564,7 @@ async def predict_tint(request: Request):
         data = await request.json()
         image_id = data['image_id']
         video_id = data['video_id']
+        
         # Load the image based on video_id and image_id
         image_path = os.path.join("videos", video_id, f"{image_id}_window.png")
         
@@ -575,17 +576,35 @@ async def predict_tint(request: Request):
         
         # Predict the tint level
         prediction = model_tint.predict([X_image_test, np.array([[0, 0]])])  # Assuming no additional attributes
-        predicted_class_index = np.argmax(prediction, axis=1)[0]
-        predicted_attributes = label_mapping.get(predicted_class_index, "Unknown Class")
+        predicted_class_index = int(np.argmax(prediction, axis=1)[0])  # Convert to standard int
+        
+        # Ensure the class index exists in the mapping
+        if predicted_class_index not in label_mapping:
+            raise HTTPException(status_code=500, detail="Predicted class index not in label mapping")
 
-         # Update the tint level in MongoDB
+        # Retrieve tint and light quality attributes based on the class index
+        predicted_attributes = label_mapping[predicted_class_index]
+        tint_level_numeric = predicted_class_index  # Use the numeric index for database storage
+
+        # Update the tint level (numeric) and light quality in MongoDB
         result = images_collection.update_one(
             {"_id": ObjectId(image_id)},
-            {"$set": {"tint_level": predicted_attributes["tint"]}}
+            {
+                "$set": {
+                    "tint_level": tint_level_numeric,
+                    "light_quality": predicted_attributes["light_quality"]
+                }
+            }
         )
         
-        # Return the predicted tint level
-        return {"video_id": video_id, "image_id": image_id, "tint_level": predicted_attributes["tint"]}
+        # Return the predicted tint level and light quality
+        return {
+            "video_id": video_id,
+            "image_id": image_id,
+            "tint_level": tint_level_numeric,
+            "tint_category": predicted_attributes["tint"],  # For user-friendly display
+            "light_quality": predicted_attributes["light_quality"]
+        }
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
