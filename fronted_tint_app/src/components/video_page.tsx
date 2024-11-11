@@ -74,18 +74,25 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
     }
   };
 
-  const fetchTintLevel = async (imageId: string) => {
+  const fetchTintLevel = async (videoId: string, imageId: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/tint/${imageId}`
-      );
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/tint`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          video_id: videoId,
+          image_id: imageId,
+        }),
+      });
       if (!response.ok) {
         throw new Error("Failed to fetch tint level");
       }
       const data = await response.json();
-      setTintLevel(data.tint_level);
+      setTintLevel(`${data.tint_category} (${data.tint_level})`);
     } catch (error) {
       console.error("Error fetching tint level:", error);
       setError("Failed to fetch tint level. Please try again.");
@@ -334,11 +341,11 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
                 ) : (
                   <Button
                     onClick={() =>
-                      selectedImage && fetchTintLevel(selectedImage.image_id)
+                      selectedImage && fetchTintLevel(id as string, selectedImage.image_id)
                     }
                     className="w-full bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-200"
                   >
-                    Check Tint Level
+                    Get Tint Level
                   </Button>
                 )}
               </motion.div>
@@ -391,7 +398,7 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
                     disabled={isLoading}
                     className="bg-green-500 text-white hover:bg-green-600 transition-colors duration-200"
                   >
-                    Crop Window
+                Crop Window
                   </Button>
                 )}
               </DialogFooter>

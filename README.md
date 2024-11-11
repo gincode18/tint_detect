@@ -276,9 +276,11 @@ The response returns the tint level of the car's window in the image.
 
 ```json
 {
-  "video_id": "60b8d6d72ef5c742b54c2cb1",
-  "image_id": "60b8d6d72ef5c742b54c2cbe1",
-  "tint_level": "Medium"
+    "video_id": "6732663fe1d217c9fb0eb622",
+    "image_id": "6732663fe1d217c9fb0eb623",
+    "tint_level": 3,
+    "tint_category": "Medium",
+    "light_quality": "day"
 }
 ```
 
