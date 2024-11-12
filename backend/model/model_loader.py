@@ -7,16 +7,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 def load_models():
-    try:
-        # Load YOLOv5 model with specific version and trust_repo=True
-        model_car = torch.hub.load('ultralytics/yolov5', 'yolov5s', 
-                                 pretrained=True, 
-                                 trust_repo=True)
-        model_car.classes = [2]  # Filter for 'car' class only
-        model_car.conf = 0.6  # Set confidence threshold
-    except Exception as e:
-        logger.error(f"Error loading YOLOv5 model: {e}")
-        raise RuntimeError("Failed to load YOLOv5 model")
+    model_car = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+    model_car.classes = [2]  # Filter for 'car' class only
+    model_car.conf = 0.6  # Set confidence threshold
 
     try:
         # Load window detection model

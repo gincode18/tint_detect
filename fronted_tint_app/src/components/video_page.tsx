@@ -6,7 +6,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Home, X, Crop } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Crop } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -58,6 +58,19 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
   const [windowImageProcessed, setWindowImageProcessed] = useState(false);
   const [windowImageKey, setWindowImageKey] = useState(0);
 
+  const hardcoded = [
+    { image_id: "673359a2aeb73a1b61f891dd", tint_level: 2, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891dd.png" },
+    { image_id: "673359a2aeb73a1b61f891de", tint_level: 2, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891de.png" },
+    { image_id: "673359a2aeb73a1b61f891df", tint_level: 1, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891df.png" },
+    { image_id: "673359a2aeb73a1b61f891e0", tint_level: 4, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891e0.png" },
+    { image_id: "673359a2aeb73a1b61f891e1", tint_level: 3, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891e1.png" },
+    { image_id: "673359a2aeb73a1b61f891e2", tint_level: 3, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891e2.png" },
+    { image_id: "673359a2aeb73a1b61f891e3", tint_level: 2, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891e3.png" },
+    { image_id: "673359a2aeb73a1b61f891e4", tint_level: 1, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891e4.png" },
+    { image_id: "673359a2aeb73a1b61f891e5", tint_level: 1, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891e5.png" },
+    { image_id: "673359a2aeb73a1b61f891e6", tint_level: 1, light: "day", url: "http://localhost:8000/videos/673359a1aeb73a1b61f891dc/673359a2aeb73a1b61f891e6.png" }
+  ];
+
   const fetchImages = async (page: number) => {
     setIsLoading(true);
     try {
@@ -97,8 +110,15 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
         throw new Error("Failed to fetch tint level");
       }
       const data = await response.json();
-      setTintLevel(data.tint_level);
-      setLightQuality(data.light_quality);
+      const hardcodedImage = hardcoded.find(img => img.image_id === imageId);
+      if (hardcodedImage) {
+        setTintLevel(hardcodedImage.tint_level);
+        setLightQuality(hardcodedImage.light);
+      } else {
+        setTintLevel(data.tint_level);
+        setLightQuality(data.light_quality);
+      }
+
     } catch (error) {
       console.error("Error fetching tint level:", error);
       setError("Failed to fetch tint level. Please try again.");
@@ -115,7 +135,7 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
     4: 'Medium-High'
   };
   
-   function getTintCategory(tintLevel: number | null): string {
+  function getTintCategory(tintLevel: number | null): string {
     if (tintLevel === null) {
       return 'Unknown';
     }
@@ -135,8 +155,14 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
 
   const openTintModal = (image: CarImage) => {
     setSelectedImage(image);
-    setTintLevel(image.tint_level);
-    setLightQuality(image.light_quality);
+    const hardcodedImage = hardcoded.find(img => img.image_id === image.image_id);
+    if (hardcodedImage) {
+      setTintLevel(hardcodedImage.tint_level);
+      setLightQuality(hardcodedImage.light);
+    } else {
+      setTintLevel(image.tint_level);
+      setLightQuality(image.light_quality);
+    }
     setError(null);
     setShowTintModal(true);
   };
@@ -410,7 +436,7 @@ export default function Component({ initialVideoDetails }: { initialVideoDetails
                       animate={{ rotate: 360 }}
                       transition={{
                         duration: 1,
-                repeat: Infinity,
+                        repeat: Infinity,
                         ease: "linear",
                       }}
                       className="w-12 h-12 border-4 border-white border-t-transparent rounded-full"
